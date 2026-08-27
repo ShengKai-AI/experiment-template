@@ -45,6 +45,13 @@
 - 运行时新增 Stage 时，必须记录新增原因。
 - 汇报进度时，应说明最近完成的阶段、当前阶段、已有产物和异常。
 
+## 记录工具接入
+
+- Agent 新建或修改正式实验入口、调度脚本时，必须接入 `tools/experiment.py`，不得依赖 Agent 持续在线更新。
+- 运行前创建 Run；Stage 开始、完成、失败或中止时及时更新状态，评测完成时同时写入指标。
+- 所有 Execution 结束后调用 `finish-run`。不得直接修改 `run.yaml` 代替记录工具。
+- 通知失败不得中断实验；冒烟测试和调试可以使用模拟通知。
+
 ## 实验日志
 
 - 正式 Run 进入 `completed`、`failed` 或 `cancelled` 终态后，使用 `AGENTS/templates/experiment-log.md` 创建 `runs/<run_id>/experiment-log.md`。
