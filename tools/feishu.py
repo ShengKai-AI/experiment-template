@@ -53,6 +53,15 @@ def format_metric_value(value: Any) -> str:
     )
 
 
+STATUS_PRESENTATION = {
+    "pending": ("⏳", "等待中"),
+    "running": ("🔄", "运行中"),
+    "completed": ("✅", "完成"),
+    "failed": ("❌", "失败"),
+    "aborted": ("⚠️", "已中止"),
+}
+
+
 def build_message(
     run_id: str,
     execution_id: str,
@@ -63,24 +72,28 @@ def build_message(
     metrics: dict[str, Any] | None = None,
     occurred_at: str | None = None,
 ) -> str:
-    """构造可直接在移动端阅读的纯文本消息。"""
+    """构造可直接在移动端阅读的飞书 Markdown 消息。"""
 
+    icon, status_label = STATUS_PRESENTATION.get(status, ("ℹ️", status))
+    subject = "Run" if stage == "run" else "Stage"
     lines = [
-        f"实验：{run_id}",
-        f"执行：{execution_id}",
-        f"阶段：{stage}",
-        f"状态：{status}",
-        f"时间：{occurred_at or utc_now()}",
+        f"## {icon} {subject} {status_label}",
+        "",
+        f"- **Run**：`{run_id}`",
+        f"- **Execution**：`{execution_id}`",
+        f"- **Stage**：`{stage}`",
+        f"- **状态**：{status_label} (`{status}`)",
+        f"- **时间**：`{occurred_at or utc_now()}`",
     ]
     if completed is not None:
         progress = f"{completed}/{total}" if total is not None else str(completed)
-        lines.append(f"进度：{progress}")
+        lines.append(f"- **进度**：`{progress}`")
     if metrics:
-        metric_text = ", ".join(
-            f"{name}={format_metric_value(value)}"
+        lines.extend(["", "**指标**", ""])
+        lines.extend(
+            f"- `{name}`：`{format_metric_value(value)}`"
             for name, value in sorted(metrics.items())
         )
-        lines.append(f"指标：{metric_text}")
     return "\n".join(lines)
 
 
@@ -145,6 +158,7 @@ def _send_feishu_notification(
         "sent": False,
         "simulated": False,
         "dry_run": dry_run,
+        "message_format": "markdown",
         "idempotency_key": idempotency_key,
         "message": message,
     }
@@ -172,7 +186,7 @@ def _send_feishu_notification(
         "bot",
         "--chat-id",
         chat_id,
-        "--text",
+        "--markdown",
         message,
         "--idempotency-key",
         idempotency_key,
