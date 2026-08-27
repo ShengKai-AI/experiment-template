@@ -11,7 +11,11 @@ import os
 import subprocess
 import sys
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
+
+
+DEFAULT_CONFIG_PATH = Path("~/.config/experiment-template/feishu.json").expanduser()
 
 
 def utc_now() -> str:
@@ -20,6 +24,25 @@ def utc_now() -> str:
 
 def environment_flag(name: str) -> bool:
     return os.getenv(name, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def configured_chat_id() -> str:
+    """读取目标群 ID；环境变量优先于服务器本地配置。"""
+
+    environment_value = os.getenv("LARK_CHAT_ID", "").strip()
+    if environment_value:
+        return environment_value
+    configured_path = os.getenv("FEISHU_NOTIFY_CONFIG", "").strip()
+    path = Path(configured_path).expanduser() if configured_path else DEFAULT_CONFIG_PATH
+    if not path.is_file():
+        return ""
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        logging.warning("无法读取飞书通知配置：%s", str(exc)[:500])
+        return ""
+    value = data.get("chat_id") if isinstance(data, dict) else None
+    return value.strip() if isinstance(value, str) else ""
 
 
 def format_metric_value(value: Any) -> str:
@@ -132,9 +155,12 @@ def _send_feishu_notification(
         result["simulated"] = True
         return result
 
-    chat_id = os.getenv("LARK_CHAT_ID", "").strip()
+    chat_id = configured_chat_id()
     if not chat_id:
-        result.update({"skipped": True, "reason": "LARK_CHAT_ID 未配置"})
+        result.update({
+            "skipped": True,
+            "reason": "未通过 LARK_CHAT_ID 或本地配置文件设置 chat_id",
+        })
         return result
 
     executable = os.getenv("LARK_CLI", "lark-cli").strip() or "lark-cli"
