@@ -1,0 +1,336 @@
+run:
+  id: 20260827-143000-main-vs-baseline
+  name: Main and Baseline Comparison
+  status: completed
+  created_at: "2026-08-27T14:25:00Z"
+  started_at: "2026-08-27T14:30:00Z"
+  ended_at: "2026-08-27T18:10:00Z"
+
+  git:
+    commit: 0123456789abcdef0123456789abcdef01234567
+    branch: main
+    dirty: false
+
+# 一个 Run 可以包含一个或多个 Execution。每个 Execution 对应某份
+# Experiment 配置的一次实际执行，并拥有独立的状态、阶段和结果。
+executions:
+  - id: exec-001
+    name: Main Experiment
+    status: completed
+    started_at: "2026-08-27T14:30:00Z"
+    ended_at: "2026-08-27T16:20:00Z"
+
+    experiment:
+      id: main/example
+      version: 1
+      source: experiments/main/example.yaml
+
+    # `config_snapshot` 必须保存本次 Execution 实际使用的完整配置。
+    # 它在 Execution 开始后应保持不变，不能随着源配置文件一起更新。
+    config_snapshot:
+      experiment:
+        id: main/example
+        name: Example Main Experiment
+        type: main
+        version: 1
+
+      spec:
+        description: >-
+          Train and evaluate the main method with the selected data and model.
+        hypothesis: >-
+          The main method should outperform the baseline on example_metric.
+
+        comparison:
+          control_experiment_id: baseline/example
+          changed_variables:
+            - training.learning_rate
+            - rollout.attempts_per_task
+
+        code:
+          entrypoint: scripts/run_experiment.py
+          arguments:
+            - --mode
+            - main
+
+        parameters:
+          models:
+            base:
+              name: example-base-model
+              path: /path/to/base/model
+              revision: example-revision
+            teacher:
+              name: example-teacher-model
+            student:
+              name: example-student-model
+
+          data:
+            train:
+              path: data/train.jsonl
+              split: train
+              revision: example-data-revision
+            development:
+              path: data/dev.jsonl
+              split: dev
+              revision: example-data-revision
+
+          rollout:
+            attempts_per_task: 2
+            max_steps: 20
+            seeds:
+              - 0
+
+          training:
+            epochs: 3
+            learning_rate: 0.00002
+            seed: 0
+
+          evaluation:
+            evaluator: example-evaluator
+            metrics:
+              - example_metric
+            seeds:
+              - 0
+
+        stages:
+          - id: prepare
+            name: Prepare inputs
+          - id: train
+            name: Train model
+          - id: evaluate
+            name: Evaluate model
+
+    # `adjustments` 记录源 Experiment 配置与实际配置之间的差异。
+    # 没有运行时调整时使用空列表。
+    adjustments:
+      - path: spec.parameters.training.learning_rate
+        original: 0.00001
+        actual: 0.00002
+        reason: 根据预运行结果调整学习率
+        recorded_at: "2026-08-27T14:28:00Z"
+
+    # `stages` 的具体名称和内部字段由项目定义。以下内容示范如何明确记录
+    # 每一步的命令、输入、输出、日志、时间和执行结果。
+    stages:
+      - id: prepare
+        name: Prepare inputs
+        status: completed
+        started_at: "2026-08-27T14:30:00Z"
+        ended_at: "2026-08-27T14:35:00Z"
+        command:
+          - python
+          - scripts/prepare_data.py
+          - --input
+          - data/train.jsonl
+        inputs:
+          - path: data/train.jsonl
+            type: dataset
+            sha256: example-input-sha256
+        outputs:
+          - path: runs/20260827-143000-main-vs-baseline/exec-001/prepared/train.jsonl
+            type: dataset
+            sha256: example-prepared-sha256
+        logs:
+          stdout: runs/20260827-143000-main-vs-baseline/exec-001/logs/prepare.stdout.log
+          stderr: runs/20260827-143000-main-vs-baseline/exec-001/logs/prepare.stderr.log
+
+      - id: train
+        name: Train model
+        status: completed
+        started_at: "2026-08-27T14:35:00Z"
+        ended_at: "2026-08-27T16:00:00Z"
+        command:
+          - python
+          - scripts/run_experiment.py
+          - --mode
+          - main
+        inputs:
+          - path: runs/20260827-143000-main-vs-baseline/exec-001/prepared/train.jsonl
+            type: dataset
+          - path: /path/to/base/model
+            type: model
+        outputs:
+          - path: runs/20260827-143000-main-vs-baseline/exec-001/checkpoints/final
+            type: model
+        logs:
+          stdout: runs/20260827-143000-main-vs-baseline/exec-001/logs/train.stdout.log
+          stderr: runs/20260827-143000-main-vs-baseline/exec-001/logs/train.stderr.log
+        metrics:
+          final_loss: 0.42
+
+      - id: evaluate
+        name: Evaluate model
+        status: completed
+        started_at: "2026-08-27T16:00:00Z"
+        ended_at: "2026-08-27T16:20:00Z"
+        command:
+          - python
+          - scripts/evaluate.py
+          - --checkpoint
+          - runs/20260827-143000-main-vs-baseline/exec-001/checkpoints/final
+        inputs:
+          - path: runs/20260827-143000-main-vs-baseline/exec-001/checkpoints/final
+            type: model
+          - path: data/dev.jsonl
+            type: dataset
+        outputs:
+          - path: runs/20260827-143000-main-vs-baseline/exec-001/results.json
+            type: evaluation_result
+            sha256: example-result-sha256
+        logs:
+          stdout: runs/20260827-143000-main-vs-baseline/exec-001/logs/evaluate.stdout.log
+          stderr: runs/20260827-143000-main-vs-baseline/exec-001/logs/evaluate.stderr.log
+        metrics:
+          example_metric: 0.78
+
+    results:
+      primary_metric:
+        name: example_metric
+        value: 0.78
+      artifacts:
+        - path: runs/20260827-143000-main-vs-baseline/exec-001/results.json
+          type: evaluation_result
+      summary: Main experiment completed successfully.
+
+  - id: exec-002
+    name: Baseline Experiment
+    status: completed
+    started_at: "2026-08-27T16:25:00Z"
+    ended_at: "2026-08-27T18:10:00Z"
+
+    experiment:
+      id: baseline/example
+      version: 1
+      source: experiments/baselines/example.yaml
+
+    config_snapshot:
+      experiment:
+        id: baseline/example
+        name: Example Baseline Experiment
+        type: baseline
+        version: 1
+
+      spec:
+        description: >-
+          Train and evaluate the baseline under comparable conditions.
+
+        code:
+          entrypoint: scripts/run_experiment.py
+          arguments:
+            - --mode
+            - baseline
+
+        parameters:
+          models:
+            base:
+              name: example-base-model
+              path: /path/to/base/model
+              revision: example-revision
+            student:
+              name: example-student-model
+
+          data:
+            train:
+              path: data/train.jsonl
+              split: train
+              revision: example-data-revision
+            development:
+              path: data/dev.jsonl
+              split: dev
+              revision: example-data-revision
+
+          rollout:
+            attempts_per_task: 1
+            max_steps: 20
+            seeds:
+              - 0
+
+          training:
+            epochs: 3
+            learning_rate: 0.00001
+            seed: 0
+
+          evaluation:
+            evaluator: example-evaluator
+            metrics:
+              - example_metric
+            seeds:
+              - 0
+
+        stages:
+          - id: prepare
+            name: Prepare inputs
+          - id: train
+            name: Train model
+          - id: evaluate
+            name: Evaluate model
+
+    adjustments: []
+
+    stages:
+      - id: prepare
+        name: Prepare inputs
+        status: completed
+        started_at: "2026-08-27T16:25:00Z"
+        ended_at: "2026-08-27T16:30:00Z"
+        inputs:
+          - path: data/train.jsonl
+            type: dataset
+        outputs:
+          - path: runs/20260827-143000-main-vs-baseline/exec-002/prepared/train.jsonl
+            type: dataset
+
+      - id: train
+        name: Train model
+        status: completed
+        started_at: "2026-08-27T16:30:00Z"
+        ended_at: "2026-08-27T17:50:00Z"
+        inputs:
+          - path: runs/20260827-143000-main-vs-baseline/exec-002/prepared/train.jsonl
+            type: dataset
+          - path: /path/to/base/model
+            type: model
+        outputs:
+          - path: runs/20260827-143000-main-vs-baseline/exec-002/checkpoints/final
+            type: model
+
+      - id: evaluate
+        name: Evaluate model
+        status: completed
+        started_at: "2026-08-27T17:50:00Z"
+        ended_at: "2026-08-27T18:10:00Z"
+        inputs:
+          - path: runs/20260827-143000-main-vs-baseline/exec-002/checkpoints/final
+            type: model
+          - path: data/dev.jsonl
+            type: dataset
+        outputs:
+          - path: runs/20260827-143000-main-vs-baseline/exec-002/results.json
+            type: evaluation_result
+            sha256: example-baseline-result-sha256
+        metrics:
+          example_metric: 0.71
+
+    results:
+      primary_metric:
+        name: example_metric
+        value: 0.71
+      artifacts:
+        - path: runs/20260827-143000-main-vs-baseline/exec-002/results.json
+          type: evaluation_result
+      summary: Baseline experiment completed successfully.
+
+# `summary` 汇总整个 Run，而不是代替各 Execution 自己的结果记录。
+summary:
+  status: completed
+  comparison:
+    metric: example_metric
+    main_execution: exec-001
+    baseline_execution: exec-002
+    main_value: 0.78
+    baseline_value: 0.71
+    absolute_difference: 0.07
+  conclusion: >-
+    The main experiment outperformed the baseline in this example run.
+  artifacts:
+    - path: runs/20260827-143000-main-vs-baseline/summary.json
+      type: run_summary
