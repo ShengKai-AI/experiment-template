@@ -20,6 +20,11 @@ try:
 except ImportError:  # pragma: no cover - 由 main 转换成结构化错误
     yaml = None
 
+try:
+    from .feishu import send_feishu_notification
+except ImportError:
+    from feishu import send_feishu_notification
+
 
 EXPERIMENT_TYPES = {"main", "baseline", "ablation"}
 STATUSES = {"pending", "running", "completed", "failed", "aborted"}
@@ -390,7 +395,15 @@ STAGE_TRANSITIONS = {
 }
 
 
-def update_stage(root: Path, run_id: str, execution_id: str, stage_id: str, status: str, now: str | None = None) -> dict[str, Any]:
+def update_stage(
+    root: Path,
+    run_id: str,
+    execution_id: str,
+    stage_id: str,
+    status: str,
+    metrics: dict[str, Any] | None = None,
+    now: str | None = None,
+) -> dict[str, Any]:
     if status not in STATUSES:
         raise ToolError("INVALID_STATUS", f"无效 Stage 状态：{status}")
     path, document = load_run(root, run_id)
@@ -403,7 +416,8 @@ def update_stage(root: Path, run_id: str, execution_id: str, stage_id: str, stat
     timestamp = now or utc_now()
     if status != previous and status not in STAGE_TRANSITIONS[previous]:
         raise ToolError("INVALID_TRANSITION", f"不允许从 {previous} 转换到 {status}", "stage.status")
-    if status != previous:
+    changed = status != previous
+    if changed:
         stage["status"] = status
         if status == "running":
             stage["started_at"] = stage.get("started_at") or timestamp
@@ -429,8 +443,11 @@ def update_stage(root: Path, run_id: str, execution_id: str, stage_id: str, stat
         if execution_status != "pending":
             run["status"] = "running"
             run["started_at"] = run.get("started_at") or timestamp
+    if metrics is not None:
+        stage["metrics"] = metrics
+    if changed or metrics is not None:
         atomic_write_yaml(path, document)
-    return {
+    result = {
         "ok": True,
         "action": "update_stage",
         "run_id": run_id,
@@ -441,6 +458,20 @@ def update_stage(root: Path, run_id: str, execution_id: str, stage_id: str, stat
         "updated_at": timestamp,
         "run_file": path_for_output(path, root),
     }
+    if changed and status in TERMINAL_STATUSES:
+        stages = execution.get("stages", [])
+        notification_metrics = metrics if metrics is not None else stage.get("metrics")
+        result["notification"] = send_feishu_notification(
+            run_id=run_id,
+            execution_id=execution_id,
+            stage=stage_id,
+            status=status,
+            completed=sum(entry.get("status") == "completed" for entry in stages),
+            total=len(stages),
+            metrics=notification_metrics,
+            occurred_at=timestamp,
+        )
+    return result
 
 
 def required_output_path(root: Path, value: str, run_id: str, execution_id: str) -> Path:
@@ -553,6 +584,30 @@ def build_experiment_log(document: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def collect_run_metrics(document: dict[str, Any]) -> dict[str, Any]:
+    """收集 Run 结束通知中的核心指标，并避免多 Execution 名称冲突。"""
+
+    collected: dict[str, Any] = {}
+    multiple = len(document.get("executions", [])) > 1
+    for execution in document.get("executions", []):
+        execution_id = execution.get("id", "execution")
+        primary = execution.get("results", {}).get("primary_metric", {})
+        if isinstance(primary, dict) and primary.get("name") is not None:
+            name = str(primary["name"])
+            key = f"{execution_id}.{name}" if multiple else name
+            collected[key] = primary.get("value")
+            continue
+        for stage in reversed(execution.get("stages", [])):
+            metrics = stage.get("metrics")
+            if not isinstance(metrics, dict) or not metrics:
+                continue
+            for name, value in metrics.items():
+                key = f"{execution_id}.{name}" if multiple else str(name)
+                collected[key] = value
+            break
+    return collected
+
+
 def finish_run(root: Path, run_id: str, status: str, now: str | None = None) -> dict[str, Any]:
     if status not in TERMINAL_STATUSES:
         raise ToolError("INVALID_STATUS", "结束 Run 时状态必须是 completed、failed 或 aborted")
@@ -593,7 +648,7 @@ def finish_run(root: Path, run_id: str, status: str, now: str | None = None) -> 
     log_path = path.parent / "experiment-log.md"
     atomic_write_yaml(path, document)
     atomic_write_text(log_path, build_experiment_log(document))
-    return {
+    result = {
         "ok": True,
         "action": "finish_run",
         "run_id": run_id,
@@ -602,6 +657,32 @@ def finish_run(root: Path, run_id: str, status: str, now: str | None = None) -> 
         "run_file": path_for_output(path, root),
         "experiment_log": path_for_output(log_path, root),
     }
+    result["notification"] = send_feishu_notification(
+        run_id=run_id,
+        execution_id="all",
+        stage="run",
+        status=status,
+        completed=sum(entry.get("status") == "completed" for entry in document["executions"]),
+        total=len(document["executions"]),
+        metrics=collect_run_metrics(document),
+        occurred_at=timestamp,
+    )
+    return result
+
+
+def parse_metrics(values: list[str]) -> dict[str, Any] | None:
+    if not values:
+        return None
+    metrics: dict[str, Any] = {}
+    for value in values:
+        if "=" not in value:
+            raise ToolError("INVALID_METRIC", f"指标必须使用 NAME=VALUE 格式：{value}")
+        name, raw = value.split("=", 1)
+        name = name.strip()
+        if not name:
+            raise ToolError("INVALID_METRIC", "指标名称不能为空")
+        metrics[name] = yaml.safe_load(raw) if yaml is not None else raw
+    return metrics
 
 
 class JsonArgumentParser(argparse.ArgumentParser):
@@ -624,6 +705,7 @@ def build_parser() -> argparse.ArgumentParser:
     update_parser.add_argument("--execution", required=True)
     update_parser.add_argument("--stage", required=True)
     update_parser.add_argument("--status", required=True, choices=sorted(STATUSES))
+    update_parser.add_argument("--metric", action="append", default=[], help="记录指标，格式为 NAME=VALUE")
     finish_parser = subparsers.add_parser("finish-run", help="结束 Run 并生成实验日志")
     finish_parser.add_argument("--run", required=True)
     finish_parser.add_argument("--status", required=True, choices=sorted(TERMINAL_STATUSES))
@@ -642,7 +724,14 @@ def main(argv: list[str] | None = None) -> int:
             payload = create_run(root, arguments.name, arguments.experiment, arguments.run_id)
             exit_code = 0
         elif arguments.command == "update-stage":
-            payload = update_stage(root, arguments.run, arguments.execution, arguments.stage, arguments.status)
+            payload = update_stage(
+                root,
+                arguments.run,
+                arguments.execution,
+                arguments.stage,
+                arguments.status,
+                metrics=parse_metrics(arguments.metric),
+            )
             exit_code = 0
         elif arguments.command == "finish-run":
             payload = finish_run(root, arguments.run, arguments.status)
