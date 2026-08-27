@@ -10,16 +10,32 @@ import logging
 import os
 import subprocess
 import sys
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 
 DEFAULT_CONFIG_PATH = Path("~/.config/experiment-template/feishu.json").expanduser()
+BEIJING_TIMEZONE = ZoneInfo("Asia/Shanghai")
 
 
-def utc_now() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+def format_beijing_time(value: str | None = None) -> str:
+    """将通知时间统一显示为北京时间。"""
+
+    if value is None:
+        moment = datetime.now(BEIJING_TIMEZONE)
+    else:
+        normalized = value[:-1] + "+00:00" if value.endswith("Z") else value
+        try:
+            moment = datetime.fromisoformat(normalized)
+        except ValueError:
+            return value
+        if moment.tzinfo is None:
+            moment = moment.replace(tzinfo=BEIJING_TIMEZONE)
+        else:
+            moment = moment.astimezone(BEIJING_TIMEZONE)
+    return moment.strftime("%Y-%m-%d %H:%M:%S 北京时间 (UTC+8)")
 
 
 def environment_flag(name: str) -> bool:
@@ -83,7 +99,7 @@ def build_message(
         f"- **Execution**：`{execution_id}`",
         f"- **Stage**：`{stage}`",
         f"- **状态**：{status_label} (`{status}`)",
-        f"- **时间**：`{occurred_at or utc_now()}`",
+        f"- **时间**：`{format_beijing_time(occurred_at)}`",
     ]
     if completed is not None:
         progress = f"{completed}/{total}" if total is not None else str(completed)

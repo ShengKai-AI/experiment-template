@@ -11,9 +11,10 @@ import re
 import subprocess
 import sys
 import tempfile
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 try:
     import yaml
@@ -31,6 +32,7 @@ STATUSES = {"pending", "running", "completed", "failed", "aborted"}
 TERMINAL_STATUSES = {"completed", "failed", "aborted"}
 CATEGORY_TYPES = {"main": "main", "baselines": "baseline", "ablations": "ablation"}
 SAFE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+BEIJING_TIMEZONE = ZoneInfo("Asia/Shanghai")
 
 
 class ToolError(Exception):
@@ -47,8 +49,22 @@ class ToolError(Exception):
         return result
 
 
-def utc_now() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+def beijing_timestamp(value: str | None = None) -> str:
+    """生成或转换为带 UTC+8 偏移的 ISO 8601 北京时间。"""
+
+    if value is None:
+        moment = datetime.now(BEIJING_TIMEZONE)
+    else:
+        normalized = value[:-1] + "+00:00" if value.endswith("Z") else value
+        try:
+            moment = datetime.fromisoformat(normalized)
+        except ValueError as exc:
+            raise ToolError("INVALID_TIME", f"时间必须是 ISO 8601 格式：{value}") from exc
+        if moment.tzinfo is None:
+            moment = moment.replace(tzinfo=BEIJING_TIMEZONE)
+        else:
+            moment = moment.astimezone(BEIJING_TIMEZONE)
+    return moment.isoformat(timespec="seconds")
 
 
 def json_output(payload: dict[str, Any]) -> None:
@@ -276,7 +292,7 @@ def create_run(
         raise ToolError("INVALID_NAME", "Run 名称不能为空", "run.name")
     if not experiment_paths:
         raise ToolError("MISSING_EXPERIMENT", "至少需要一个 Experiment 配置")
-    timestamp = now or utc_now()
+    timestamp = beijing_timestamp(now)
     if run_id is None:
         compact_time = timestamp.replace("-", "").replace(":", "")[:15].replace("T", "-")
         run_id = f"{compact_time}-{slugify(name)}"
@@ -413,7 +429,7 @@ def update_stage(
     execution = find_by_id(document["executions"], execution_id, "execution")
     stage = find_by_id(execution.get("stages", []), stage_id, "stage")
     previous = stage["status"]
-    timestamp = now or utc_now()
+    timestamp = beijing_timestamp(now)
     if status != previous and status not in STAGE_TRANSITIONS[previous]:
         raise ToolError("INVALID_TRANSITION", f"不允许从 {previous} 转换到 {status}", "stage.status")
     changed = status != previous
@@ -629,7 +645,7 @@ def finish_run(root: Path, run_id: str, status: str, now: str | None = None) -> 
         if errors:
             raise ToolError("RUN_INCOMPLETE", f"Run 不满足完成条件，共 {len(errors)} 项；先运行 validate 查看记录并检查产物")
 
-    timestamp = now or utc_now()
+    timestamp = beijing_timestamp(now)
     if status == "completed":
         for execution in document["executions"]:
             if not execution.get("stages"):

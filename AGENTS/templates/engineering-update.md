@@ -2,8 +2,8 @@
 document_type: engineering_update
 id: <YYYYMMDD-变更名称>
 status: planned
-created_at: <ISO 8601 时间>
-updated_at: <ISO 8601 时间>
+created_at: <ISO 8601 北京时间，例如 2026-08-27T15:25:00+08:00>
+updated_at: <ISO 8601 北京时间，例如 2026-08-27T18:15:00+08:00>
 branch: <Git 分支>
 base_commit: <变更前 commit>
 final_commit:

@@ -2,10 +2,10 @@
 document_type: experiment_log
 run_id: <run_id>
 status: <completed | failed | cancelled>
-started_at: <ISO 8601 时间>
-ended_at: <ISO 8601 时间>
-created_at: <ISO 8601 时间>
-updated_at: <ISO 8601 时间>
+started_at: <ISO 8601 北京时间，例如 2026-08-27T15:30:00+08:00>
+ended_at: <ISO 8601 北京时间，例如 2026-08-27T18:10:00+08:00>
+created_at: <ISO 8601 北京时间，例如 2026-08-27T15:25:00+08:00>
+updated_at: <ISO 8601 北京时间，例如 2026-08-27T18:15:00+08:00>
 branch: <Git 分支>
 commit: <实际 commit>
 ---
