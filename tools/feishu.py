@@ -159,6 +159,7 @@ def _send_feishu_notification(
     child_environment = os.environ.copy()
     child_environment.setdefault("LARKSUITE_CLI_NO_UPDATE_NOTIFIER", "1")
     child_environment.setdefault("LARKSUITE_CLI_NO_SKILLS_NOTIFIER", "1")
+    child_environment.setdefault("LARK_CLI_NO_PROXY", "1")
     result["attempted"] = True
     try:
         completed_process = subprocess.run(
