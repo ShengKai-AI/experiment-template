@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+secrets/
+
+# Runtime artifacts are indexed by manifests, not committed wholesale
+artifacts/
+runs/**/stdout.log
+runs/**/stderr.log
+runs/**/checkpoints/
+
+# Editor and OS files
+.vscode/
+.idea/
+.DS_Store
+
