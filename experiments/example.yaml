@@ -1,0 +1,81 @@
+experiment:
+  id: main/example
+  name: Example Experiment
+  type: main
+  version: 1
+
+# `spec` 下的所有内容均由具体项目自行定义。以下结构仅作为示例，
+# 不属于共享框架强制要求的字段。
+spec:
+  description: >-
+    Describe what this experiment does and why it is being run.
+  hypothesis: >-
+    State the hypothesis that the measured results should support or reject.
+
+  comparison:
+    control_experiment_id: baseline/example
+    changed_variables:
+      - example_variable
+
+  code:
+    entrypoint: scripts/run_experiment.py
+    arguments: []
+
+  parameters:
+    models:
+      base:
+        name: example-base-model
+        path: /path/to/base/model
+        revision: example-revision
+      teacher:
+        name: example-teacher-model
+      student:
+        name: example-student-model
+
+    data:
+      train:
+        path: /path/to/train/data
+        split: train
+      development:
+        path: /path/to/development/data
+        split: dev
+      test:
+        path: /path/to/test/data
+        split: test
+
+    rollout:
+      attempts_per_task: 1
+      max_steps: 1
+      seeds:
+        - 0
+
+    training:
+      epochs: 1
+      learning_rate: 0.00001
+      seed: 0
+
+    evaluation:
+      evaluator: example-evaluator
+      metrics:
+        - example_metric
+      seeds:
+        - 0
+
+  stages:
+    - id: prepare
+      name: Prepare inputs
+    - id: rollout
+      name: Generate trajectories
+    - id: train
+      name: Train model
+    - id: evaluate
+      name: Evaluate model
+
+  completion:
+    required_stages:
+      - prepare
+      - rollout
+      - train
+      - evaluate
+    required_outputs:
+      - runs/<run_id>/results.json
