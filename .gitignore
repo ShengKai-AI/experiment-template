@@ -1,23 +1,22 @@
-# Python
+# Python 生成文件
 __pycache__/
 *.py[cod]
 .pytest_cache/
 .venv/
 
-# Local environment and secrets
+# 本地环境与密钥
 .env
 .env.*
 !.env.example
 secrets/
 
-# Runtime artifacts are indexed by manifests, not committed wholesale
+# 运行产物由清单索引，不整体提交
 artifacts/
 runs/**/stdout.log
 runs/**/stderr.log
 runs/**/checkpoints/
 
-# Editor and OS files
+# 编辑器与操作系统文件
 .vscode/
 .idea/
 .DS_Store
-
