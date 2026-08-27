@@ -1,0 +1,11 @@
+experiment:
+  id: main/example
+  name: Example Experiment
+  type: main
+  version: 1
+
+spec:
+  description: ""
+  parameters: {}
+  stages: []
+  completion: {}
